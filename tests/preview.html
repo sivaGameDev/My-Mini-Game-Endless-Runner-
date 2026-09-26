@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD Preview</title>
+<style>
+  html, body { margin: 0; height: 100%; background: linear-gradient(#232b4a, #0c0d18 55%, #151522); overflow: hidden; }
+</style>
+</head>
+<body>
+<script>
+// Just enough of the engine for the HUD code to run in a plain page.
+var pc = {
+    createScript: function () { var S = function () {}; S.attributes = { add: function () {} }; return S; },
+    math: { clamp: function (v, a, b) { return Math.max(a, Math.min(b, v)); } },
+    KEY_SPACE: 32, KEY_ENTER: 13, KEY_P: 80, KEY_ESCAPE: 27, EVENT_KEYDOWN: 'keydown'
+};
+// A tiny event bus standing in for app.on / app.fire.
+var handlers = {};
+var app = {
+    on: function (name, fn, scope) { (handlers[name] = handlers[name] || []).push([fn, scope]); },
+    off: function () {},
+    fire: function (name) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        (handlers[name] || []).forEach(function (h) { h[0].apply(h[1], args); });
+        window.fired = (window.fired || []).concat([name + (args.length ? ' ' + args.join(' ') : '')]);
+    },
+    keyboard: { on: function () {}, off: function () {} },
+    root: {
+        findByTag: function () { return [{ script: { runnerController: { grounded: true, y: 0 } } }]; },
+        findByName: function (name) {
+            if (name === 'Camera') return { script: { cameraFollow: { motion: 1, cinematic: true } } };
+            return { script: { spawner: { seed: 3141592653, rowIndex: 1, setSeed: function () {} } } };
+        }
+    }
+};
+</script>
+<script src="../scripts/gameManager.js"></script>
+<script src="../scripts/powerUps.js"></script>
+<script src="../scripts/progress.js"></script>
+<script src="../scripts/trail.js"></script>
+<script src="../scripts/shop.js"></script>
+<script src="../scripts/levels.js"></script>
+<script src="../scripts/achievements.js"></script>
+<script src="../scripts/spawner.js"></script>
+<script src="../scripts/zones.js"></script>
+<script src="../scripts/challenge.js"></script>
+<script src="../scripts/settings.js"></script>
+<script src="../scripts/account.js"></script>
+<script src="../scripts/leaderboard.js"></script>
+<script>
+// Stand-in for the GameFuse service, so the join and board screens can be exercised offline.
+var demoUser = function (name) {
+    return {
+        getUsername: function () { return name; },
+        getAttributeValue: function () { return null; },
+        setAttribute: function (k, v, cb) { window.saved = v; cb('ok', false); },
+        addLeaderboardEntry: function (n, s, extras, cb) { window.posted = [n, s, extras]; cb('ok', false); }
+    };
+};
+window.GameFuseUser = { CurrentUser: null };
+window.GameFuse = {
+    Instance: {
+        leaderboardEntries: [],
+        getLeaderboard: function (limit, onePerUser, name, cb) {
+            var self = this;
+            setTimeout(function () {
+                self.leaderboardEntries = [['Ravi', 18400, 3120], ['NeonAce', 15220, 2740], ['tajammal', 12010, 2180],
+                    ['Sam', 9400, 1750], ['Kit', 8600, 1610]].map(function (r) {
+                    return { getUsername: function () { return r[0]; }, getScore: function () { return r[1]; },
+                        getExtraAttributes: function () { return { distance: r[2] }; } };
+                });
+                cb('ok', false);
+            }, 250);
+        }
+    },
+    setUpGame: function (id, token, cb) { setTimeout(function () { cb('ready', false); }, 50); },
+    signIn: function (email, password, cb) {
+        setTimeout(function () {
+            if (password === 'bad') { cb('Invalid email or password', true); return; }
+            GameFuseUser.CurrentUser = demoUser('NeonAce');
+            cb('ok', false);
+        }, 250);
+    },
+    signUp: function (email, password, confirm, username, cb) {
+        setTimeout(function () { GameFuseUser.CurrentUser = demoUser(username || 'Player'); cb('ok', false); }, 250);
+    }
+};
+</script>
+<script>
+var view = location.search.slice(1) || 'over';
+var chal = view.indexOf('Chal') !== -1;
+var newPlayer = view.indexOf('New') !== -1;
+view = view.replace('Chal', '').replace('New', '');
+var gm = new GameManager();
+gm.app = app;
+gm.state = view.indexOf('over') === 0 ? 'over' : view === 'paused' ? 'paused' : 'ready';
+gm.score = 3214; gm.best = 5120; gm.coins = 64; gm.newBest = false; gm.powerUps = null; gm.held = false;
+gm._buildHud();
+gm._renderHud();
+
+var p = new Progress();
+p.app = app;
+p.game = gm;
+p.sandbox = true;
+p.today = 20718;
+p.data = Progress.defaults();
+p.data.wallet = 1230; p.data.runs = 5;
+p.data.streak = { count: 3, last: 20718 };
+p.data.records = { best: 1320, days: { 20717: 812 } };
+p.data.missions = { day: 20718, bonus: false, list: [
+    { id: 'pads3', progress: 3, done: true },
+    { id: 'boost4', progress: 2, done: false },
+    { id: 'coins120', progress: 64, done: false }
+] };
+p.data.skins = { owned: ['classic', 'gold'], equipped: 'gold' };
+p.data.upgrades = { magnet: 2, shield: 5 };
+p.data.items = { shield: { count: 2, use: true } };
+p.playerOriginal = { diffuse: { r: 0.2, g: 0.75, b: 0.9 }, emissive: { r: 0, g: 0, b: 0 } };
+p.run = { counts: {}, completed: ['pads3'], earned: 100, coins: 64, distance: 1234, bestBefore: 1320, newBest: false };
+p._timers = [];
+p._sections = { ready: [], over: [] };
+p._buildHud();
+
+var shop = new Shop();
+shop.app = app;
+shop.entity = { script: { gameManager: gm, progress: p, powerUps: { magnetTime: 10, multiplierTime: 10, doubleJumpTime: 10, shieldTime: 15, grant: function (t, s) { app.fire('granted', t, s || ''); } } } };
+shop.on = function () {};
+shop.initialize();
+
+var ents = { gameManager: gm, progress: p, shop: shop };
+var levels = new Levels();
+levels.app = app; levels.entity = { script: ents }; levels.on = function () {};
+levels.initialize();
+ents.levels = levels;
+var trophies = new Achievements();
+trophies.app = app; trophies.entity = { script: ents }; trophies.on = function () {};
+p.data.xp = Levels.totalFor(5) + 40; p.data.level = 5;
+p.data.runs = 18; p.data.stats = { jumps: 312, bars: 88, pads: 41, coins: 2140, distance: 21400, crushers: 37, missions: 9, buys: 3 };
+p.data.feats = { combo5: 4, close5: 2, coins100: 64, clean: 640 };
+p.data.achievements = { run100: 1, run500: 1, stones: 1, sky: 1 };
+trophies.initialize();
+trophies.postInitialize();
+levels.run = { xp: 312, tricks: 20, closeCalls: 3, levels: view === 'overUp' ? [5] : [] };
+trophies.run.unlocked = view === 'overUp' ? ['run1000', 'coins100'] : [];
+if (view === 'overUp') view = 'over';
+gm.distance = 1234;
+var challenge = new Challenge();
+challenge.app = app; challenge.entity = { script: ents }; challenge.on = function () {};
+challenge.initialize();
+challenge.postInitialize();
+if (chal) {
+    challenge.enter(Challenge.encode(3141592653, 1500, 6000));
+    challenge.result = { distance: 1234, target: 1500, won: false, reward: false };
+    // What the zones script adds when a zone unlocks on the run.
+    p.addSection('over', function () { return '<div class="nr-tro-line">New zone unlocked: <b>Blood Moon</b></div>'; });
+}
+if (newPlayer) p.data.runs = 0;
+
+if (view === 'over') p._renderOver();
+if (view === 'ready') p._renderReady();
+ents.audioFx = { setVolumes: function () {}, muted: false };
+var settings = new Settings();
+settings.app = app; settings.entity = { script: ents }; settings.on = function () {};
+settings.initialize();
+settings.postInitialize();
+gm._renderHud();
+if (view === 'trophies' || view === 'profile') { p._renderReady(); trophies.open(); }
+var account = new Account();
+account.app = app; account.entity = { script: ents }; account.on = function () {};
+account.gameId = 'demo'; account.token = 'demo'; account.cloudSave = true;
+account.initialize();
+account.postInitialize();
+ents.account = account;
+var board = new Leaderboard();
+board.app = app; board.entity = { script: ents }; board.on = function () {};
+board.size = 25; board.daily = true;
+board.initialize();
+board.postInitialize();
+gm._renderHud();
+if (view === 'settings') { p._renderReady(); settings.open(); }
+if (view === 'join') { p._renderReady(); setTimeout(function () { account.open(); }, 80); }
+if (view === 'board') { p._renderReady(); setTimeout(function () { board.open(); }, 80); }
+if (view === 'boardIn') {
+    p._renderReady();
+    setTimeout(function () { account.signIn('me@example.com', 'good'); }, 60);
+    setTimeout(function () { board.open(); }, 400);
+}
+if (view.indexOf('shop') === 0) {
+    p._renderReady();
+    shop.tab = view.slice(4).toLowerCase() || 'upgrades';
+    shop.open();
+}
+</script>
+</body>
+</html>

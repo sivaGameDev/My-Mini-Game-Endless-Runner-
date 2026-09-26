@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Loading screen preview</title>
+<style>html, body { margin: 0; height: 100%; background: #000; }</style>
+</head>
+<body>
+<script>
+// Stands in for the engine: the loading screen only needs pc.script.createLoadingScreen and an app
+// that emits preload:progress, preload:end and start.
+var handlers = {};
+var app = {
+    on: function (name, fn) { (handlers[name] = handlers[name] || []).push(fn); }
+};
+var fire = function (name, value) {
+    (handlers[name] || []).forEach(function (fn) { fn(value); });
+};
+window.pc = { script: { createLoadingScreen: function (fn) { fn(app); } } };
+</script>
+<script src="/scripts/loadingScreen.js"></script>
+<script>
+// Walk the bar up the way a real preload does: quick at first, then a pause on the big assets.
+var steps = [0.08, 0.19, 0.31, 0.4, 0.52, 0.55, 0.68, 0.79, 0.88, 0.95, 1];
+var i = 0;
+var tick = function () {
+    if (i >= steps.length) {
+        fire('preload:end');
+        setTimeout(function () { fire('start'); }, 700);
+        return;
+    }
+    fire('preload:progress', steps[i++]);
+    setTimeout(tick, 420);
+};
+setTimeout(tick, 400);
+</script>
+</body>
+</html>
